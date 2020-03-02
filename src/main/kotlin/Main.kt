@@ -16,7 +16,7 @@ fun main() {
             val tokens = Lexer.tokenize(input)
             val ast = Parser.parse(tokens)
             println("=> $ast")
-            val output = runPasses(ast,CanonicalAdds, CanonicalMuls,Distributive,CanonicalAdds, CanonicalMuls)
+            val output = runPasses(ast,ExpandConst,Flatten, CanonicalAdds, CanonicalMuls, Unflatten, Distributive,Flatten, CanonicalAdds, CanonicalMuls, Unflatten, CleanZerosOnes)
             println("Tree is $output")
         } catch (e: Exception) {
             e.printStackTrace()

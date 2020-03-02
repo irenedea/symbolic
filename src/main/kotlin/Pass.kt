@@ -29,32 +29,129 @@ object Distributive: Pass {
         else -> ast
     }
     override fun run(ast: ASTNode): ASTNode {
-//        var prev = ast
-//        var curr = distributeRight(ast)
-//
-//        while (curr.hashCode() == prev.hashCode()) {
-//            prev = curr
-//            curr = distributeRight(curr)
-//        }
-//        println("distributeRight $curr")
-//        curr = distributeLeft(curr)
-//        while (curr.hashCode() == prev.hashCode()) {
-//            prev = curr
-//            curr = distributeLeft(curr)
-//        }
-//        println("distributeLeft $curr")
-//        return curr
         val a = distributeRight(ast)
-//        println(a)
         val b = distributeLeft(a)
-//        println(b)
-//        println("-----")
-//
-//        val c = distributeLeft(ast)
-//        println(a)
-//        val d = distributeRight(a)
-//        println(b)
         return b
+    }
+}
+
+//fun ASTNode.isConstOrVar() = when(this) {
+//    is Const, is Var -> true
+//    else -> false
+//}
+//
+//fun ASTNode.isCall(op: Op) = when(this) {
+//    is Call -> this.op == op
+//    else -> false
+//}
+
+object Flatten: Pass {
+    override val name: String = "Flatten"
+    fun flattenCallArgs(ast: ASTNode, op: Op): List<ASTNode> = when (ast) {
+        is Call -> {
+            if (op == ast.op)
+                flattenCallArgs(ast.left, op) + flattenCallArgs(ast.right, op)
+            else
+                listOf(ast)
+
+        }
+        else -> listOf(ast)
+    }
+    private fun flatten(ast: ASTNode): ASTNode = when (ast) {
+        is Call -> {
+            FlatCall(ast.op, flattenCallArgs(ast, ast.op))
+        }
+        else -> ast
+    }
+    override fun run(ast: ASTNode): ASTNode {
+        return flatten(ast)
+    }
+}
+
+object ExpandConst: Pass {
+    override val name: String = "Expand"
+    private fun addFromZero(value: Int): ASTNode {
+        if (value == 0) {
+            return Const(0)
+        }
+        return Call(Add, addFromZero(value - 1), Const(1))
+    }
+
+    private fun expand(ast: ASTNode): ASTNode = when(ast) {
+        is Const -> addFromZero(ast.value)
+        is Call -> Call(ast.op, expand(ast.left), expand(ast.right))
+        is FlatCall -> FlatCall(ast.op, ast.args.map { expand(it) })
+        else -> ast
+    }
+    override fun run(ast: ASTNode): ASTNode {
+        return expand(ast)
+    }
+}
+
+fun ASTNode.isConst(value: Int): Boolean {
+    return this is Const && this.value == value
+}
+
+object CleanZerosOnes: Pass {
+    override val name: String = "CleanZerosOnes"
+    private fun clean(ast: ASTNode): ASTNode = when(ast) {
+        is Call -> {
+            if (ast.op == Mul) {
+                if (ast.left.isConst(0) || ast.right.isConst(0)) {
+                    Const(0)
+                } else if (ast.left.isConst(1)) {
+                    clean(ast.right)
+                } else if (ast.right.isConst(1)) {
+                    clean(ast.left)
+                } else {
+                    Call(ast.op, clean(ast.left), clean(ast.right))
+                }
+            }
+            else if (ast.op == Add || ast.op == Sub) {
+                if (ast.left.isConst(0)) {
+                    clean(ast.right)
+                } else if (ast.right.isConst(0)) {
+                    clean(ast.left)
+                } else
+                    Call(ast.op, clean(ast.left), clean(ast.right))
+            }
+            else {
+                Call(ast.op, clean(ast.left), clean(ast.right))
+            }
+        }
+        is FlatCall -> throw NotImplementedError()
+        else -> ast
+    }
+    override fun run(ast: ASTNode): ASTNode {
+        var prev = ast
+        var curr = clean(ast)
+        while (curr.hashCode() != prev.hashCode()) {
+            prev = curr
+            curr = clean(curr)
+        }
+        return curr
+    }
+}
+
+object Unflatten: Pass {
+    override val name: String = "Unflatten"
+    fun unflattenCallArgs(argList: List<ASTNode>, op: Op): ASTNode {
+        if (argList.size == 1) {
+            return argList.first()
+        }
+        return Call(op, unflattenCallArgs(argList.subList(0,argList.size - 1), op), argList.last())
+    }
+    private fun unflatten(ast: ASTNode): ASTNode = when (ast) {
+        is Call -> {
+            Call(ast.op, unflatten(ast.left), unflatten(ast.right))
+        }
+        is FlatCall -> {
+            unflattenCallArgs(ast.args, ast.op)
+        }
+        else -> ast
+    }
+    override fun run(ast: ASTNode): ASTNode {
+        return unflatten(ast)
     }
 }
 
@@ -69,6 +166,14 @@ object CanonicalAdds: Pass {
                 } else newCall
             } else {
                 Call(ast.op, swap(ast.left), swap(ast.right))
+            }
+        }
+        is FlatCall -> {
+            val newCall = FlatCall(ast.op, ast.args.map { swap(it) })
+            if (ast.op is Add) {
+                FlatCall(newCall.op, newCall.args.sortedBy { it.hashCode() })
+            } else {
+                newCall
             }
         }
         else -> ast
@@ -96,6 +201,14 @@ object CanonicalMuls: Pass {
                 } else newCall
             } else {
                 Call(ast.op, swap(ast.left), swap(ast.right))
+            }
+        }
+        is FlatCall -> {
+            val newCall = FlatCall(ast.op, ast.args.map { swap(it) })
+            if (ast.op is Mul) {
+                FlatCall(newCall.op, newCall.args.sortedBy { it.hashCode() })
+            } else {
+                newCall
             }
         }
         else -> ast

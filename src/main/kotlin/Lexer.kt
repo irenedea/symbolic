@@ -1,5 +1,7 @@
 package symbolic
 
+import java.lang.IllegalStateException
+
 enum class TokenType {
     CONST,
     VAR,
@@ -87,14 +89,14 @@ class Tokens {
     }
 
     fun advance(): Token {
-        assert(canAdvance())
+        if (!canAdvance()) throw IllegalStateException("Cannot advance to next token for $tokens.")
         return tokens[index].also { index++ }
     }
 
     fun canAdvance() = index < length - 1
 
     fun at(type: TokenType): Boolean {
-        assert(index < length) {"index is out of bounds!"}
+        if (index > length - 1) throw IndexOutOfBoundsException("Not at valid token index for tokens of length $length and index $index.")
         return tokens[index].type == type
     }
 
@@ -113,12 +115,11 @@ class Tokens {
             else if (at(TokenType.RPAR)) balance += 1
             advance()
         }
-        println("tokens parens $index $tokens ${tokens.subList(startIndex + 1, index - 1)}")
         return Tokens(tokens.subList(startIndex + 1, index - 1))
     }
 
     override fun toString(): String {
-        return tokens.joinToString("")
+        return tokens.toString()
     }
 }
 

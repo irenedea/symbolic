@@ -50,24 +50,25 @@ class Call(val op: Op, val left: ASTNode, val right: ASTNode): ASTNode() {
     override fun hashCode(): Int {
         return arrayOf(op, left, right).contentDeepHashCode()
     }
+
 }
 
-//class Call(val op: Op, val args: List<ASTNode>): ASTNode() {
-//    override fun acceptDistributeLeft(newOp: Op, expr: ASTNode): ASTNode {
-//        return Call(op, args.map { it.acceptDistributeLeft(op, expr)})
-//    }
-//
-//    override fun acceptDistributeRight(newOp: Op, expr: ASTNode): ASTNode {
-//        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
-//    }
-//    override fun toString(): String {
-//        return args.joinToString(op.toString())
-//    }
-//
-//    override fun hashCode(): Int {
-//        return arrayOf(op, args).contentDeepHashCode()
-//    }
-//}
+class FlatCall(val op: Op, val args: List<ASTNode>): ASTNode() {
+    override fun acceptDistributeLeft(newOp: Op, expr: ASTNode): ASTNode {
+        return FlatCall(op, args.map { it.acceptDistributeLeft(op, expr)})
+    }
+
+    override fun acceptDistributeRight(newOp: Op, expr: ASTNode): ASTNode {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    }
+    override fun toString(): String {
+        return args.joinToString(" $op ")
+    }
+
+    override fun hashCode(): Int {
+        return arrayOf(op, args).contentDeepHashCode()
+    }
+}
 
 class Var(val name: String): ASTNode() {
     override fun acceptDistributeLeft(newOp: Op, expr: ASTNode): ASTNode {
