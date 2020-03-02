@@ -5,6 +5,16 @@ interface Pass {
     fun run(ast: ASTNode): ASTNode
 }
 
+fun runUntilStable(ast: ASTNode, fn: (ASTNode) -> ASTNode): ASTNode {
+    var prev = ast
+    var curr = fn(ast)
+    while (prev.hashCode() != curr.hashCode()) {
+        prev = curr
+        curr = fn(prev)
+    }
+    return curr
+}
+
 object Distributive: Pass {
     override val name: String = "Distributive"
     private fun distributeRight(ast: ASTNode): ASTNode = when(ast) {
@@ -28,30 +38,12 @@ object Distributive: Pass {
         }
         else -> ast
     }
-    override fun run(ast: ASTNode): ASTNode {
-        var count = 0
-        var prev = ast
-        var curr = distributeLeft(distributeRight(prev))
-        while (prev.hashCode() != curr.hashCode()) {
-            count += 1
-            prev = curr
-            curr = distributeLeft(distributeRight(prev))
-            curr = runPasses(curr, Flatten, CanonicalAdds, CanonicalMuls, Unflatten)
+    override fun run(ast: ASTNode): ASTNode =
+        runUntilStable(ast) { input ->
+            val distributed = distributeLeft(distributeRight(input))
+            runPasses(distributed, Flatten, CanonicalAdds, CanonicalMuls, Unflatten)
         }
-        println("-------distributive ran $count times!--------")
-        return curr
-    }
 }
-
-//fun ASTNode.isConstOrVar() = when(this) {
-//    is Const, is Var -> true
-//    else -> false
-//}
-//
-//fun ASTNode.isCall(op: Op) = when(this) {
-//    is Call -> this.op == op
-//    else -> false
-//}
 
 object Flatten: Pass {
     override val name: String = "Flatten"
@@ -71,15 +63,7 @@ object Flatten: Pass {
         }
         else -> ast
     }
-    override fun run(ast: ASTNode): ASTNode {
-        var prev = ast
-        var curr = flatten(prev)
-        while (prev.hashCode() != curr.hashCode()) {
-            prev = curr
-            curr = flatten(prev)
-        }
-        return curr
-    }
+    override fun run(ast: ASTNode): ASTNode = runUntilStable(ast) { flatten(it) }
 }
 
 object ExpandConst: Pass {
@@ -136,15 +120,7 @@ object CleanZerosOnes: Pass {
         is FlatCall -> throw NotImplementedError()
         else -> ast
     }
-    override fun run(ast: ASTNode): ASTNode {
-        var prev = ast
-        var curr = clean(ast)
-        while (curr.hashCode() != prev.hashCode()) {
-            prev = curr
-            curr = clean(curr)
-        }
-        return curr
-    }
+    override fun run(ast: ASTNode): ASTNode = runUntilStable(ast) { clean(it) }
 }
 
 object Unflatten: Pass {
@@ -164,15 +140,7 @@ object Unflatten: Pass {
         }
         else -> ast
     }
-    override fun run(ast: ASTNode): ASTNode {
-        var prev = ast
-        var curr = unflatten(prev)
-        while (prev.hashCode() != curr.hashCode()) {
-            prev = curr
-            curr = unflatten(curr)
-        }
-        return curr
-    }
+    override fun run(ast: ASTNode): ASTNode = runUntilStable(ast) { unflatten(it) }
 }
 
 object CanonicalAdds: Pass {
@@ -199,15 +167,7 @@ object CanonicalAdds: Pass {
         else -> ast
     }
 
-    override fun run(ast: ASTNode): ASTNode {
-        var prev = ast
-        var curr = swap(ast)
-        while (curr.hashCode() != prev.hashCode()) {
-            prev = curr
-            curr = swap(curr)
-        }
-        return swap(ast)
-    }
+    override fun run(ast: ASTNode): ASTNode = runUntilStable(ast) { swap(it) }
 }
 
 object CanonicalMuls: Pass {
@@ -234,13 +194,5 @@ object CanonicalMuls: Pass {
         else -> ast
     }
 
-    override fun run(ast: ASTNode): ASTNode {
-        var prev = ast
-        var curr = swap(ast)
-        while (curr.hashCode() != prev.hashCode()) {
-            prev = curr
-            curr = swap(curr)
-        }
-        return swap(ast)
-    }
+    override fun run(ast: ASTNode): ASTNode = runUntilStable(ast) { swap(it) }
 }
