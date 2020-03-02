@@ -38,10 +38,20 @@ sealed class ASTNode {
 
 class Call(val op: Op, val left: ASTNode, val right: ASTNode): ASTNode() {
     override fun acceptDistributeLeft(newOp: Op, expr: ASTNode): ASTNode {
-        return Call(op, left.acceptDistributeLeft(newOp, expr), right.acceptDistributeLeft(newOp, expr))
+        if (op is Additive)
+            return Call(op, left.acceptDistributeLeft(newOp, expr), right.acceptDistributeLeft(newOp, expr))
+        else {
+            val newExpr = Call(op, expr, left)
+            return right.acceptDistributeLeft(newOp, newExpr)
+        }
     }
     override fun acceptDistributeRight(newOp: Op, expr: ASTNode): ASTNode {
-        return Call(op, left.acceptDistributeRight(newOp, expr), right.acceptDistributeRight(newOp, expr))
+        if (op is Additive)
+            return Call(op, left.acceptDistributeRight(newOp, expr), right.acceptDistributeRight(newOp, expr))
+        else {
+            val newExpr = Call(op, right, expr)
+            return left.acceptDistributeRight(newOp, newExpr)
+        }
     }
     override fun toString(): String {
         return "($left $op $right)"
@@ -76,7 +86,7 @@ class Var(val name: String): ASTNode() {
     }
 
     override fun acceptDistributeRight(newOp: Op, expr: ASTNode): ASTNode {
-        return Call(newOp, this, expr)
+        return Call(newOp, expr, this)
     }
 
     override fun toString(): String {
@@ -93,7 +103,7 @@ class Const(val value: Int): ASTNode() {
         return Call(newOp, expr, this)
     }
     override fun acceptDistributeRight(newOp: Op, expr: ASTNode): ASTNode {
-        return Call(newOp, this, expr)
+        return Call(newOp, expr, this)
     }
     override fun toString(): String {
         return value.toString()

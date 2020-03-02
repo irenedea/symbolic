@@ -10,7 +10,7 @@ object Distributive: Pass {
     private fun distributeRight(ast: ASTNode): ASTNode = when(ast) {
         is Call -> {
             if (ast.op is Multiplicative) {
-                ast.right.acceptDistributeLeft(ast.op, ast.left)
+                ast.left.acceptDistributeRight(ast.op, ast.right)
             } else {
                 Call(ast.op, distributeRight(ast.left), distributeRight(ast.right))
             }
@@ -21,7 +21,7 @@ object Distributive: Pass {
     private fun distributeLeft(ast: ASTNode): ASTNode = when(ast) {
         is Call -> {
             if (ast.op is Multiplicative) {
-                ast.left.acceptDistributeLeft(ast.op, ast.right)
+                ast.right.acceptDistributeLeft(ast.op, ast.left)
             } else {
                 Call(ast.op, distributeLeft(ast.left), distributeLeft(ast.right))
             }
@@ -29,9 +29,17 @@ object Distributive: Pass {
         else -> ast
     }
     override fun run(ast: ASTNode): ASTNode {
-        val a = distributeRight(ast)
-        val b = distributeLeft(a)
-        return b
+        var count = 0
+        var prev = ast
+        var curr = distributeLeft(distributeRight(prev))
+        while (prev.hashCode() != curr.hashCode()) {
+            count += 1
+            prev = curr
+            curr = distributeLeft(distributeRight(prev))
+            curr = runPasses(curr, Flatten, CanonicalAdds, CanonicalMuls, Unflatten)
+        }
+        println("-------distributive ran $count times!--------")
+        return curr
     }
 }
 
@@ -52,7 +60,7 @@ object Flatten: Pass {
             if (op == ast.op)
                 flattenCallArgs(ast.left, op) + flattenCallArgs(ast.right, op)
             else
-                listOf(ast)
+                listOf(flatten(ast))
 
         }
         else -> listOf(ast)
@@ -64,7 +72,13 @@ object Flatten: Pass {
         else -> ast
     }
     override fun run(ast: ASTNode): ASTNode {
-        return flatten(ast)
+        var prev = ast
+        var curr = flatten(prev)
+        while (prev.hashCode() != curr.hashCode()) {
+            prev = curr
+            curr = flatten(prev)
+        }
+        return curr
     }
 }
 
@@ -151,7 +165,13 @@ object Unflatten: Pass {
         else -> ast
     }
     override fun run(ast: ASTNode): ASTNode {
-        return unflatten(ast)
+        var prev = ast
+        var curr = unflatten(prev)
+        while (prev.hashCode() != curr.hashCode()) {
+            prev = curr
+            curr = unflatten(curr)
+        }
+        return curr
     }
 }
 
