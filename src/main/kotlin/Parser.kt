@@ -22,6 +22,9 @@ object Sub: Additive("-")
 object Div: Multiplicative("/")
 object Mul: Multiplicative("*")
 
+sealed class Unary(str: String): Op(str)
+object Negate: Unary("-")
+
 sealed class ASTNode {
     abstract fun acceptDistributeLeft(newOp: Op, expr: ASTNode): ASTNode
 
@@ -33,6 +36,20 @@ sealed class ASTNode {
             TokenType.VAR -> Var(token.name)
             else -> throw IllegalArgumentException("Token $token is not Const or Var")
         }
+    }
+}
+
+class UnaryCall(val op: Op, val arg: ASTNode): ASTNode() {
+    override fun acceptDistributeLeft(newOp: Op, expr: ASTNode): ASTNode {
+        return UnaryCall(op, arg.acceptDistributeLeft(newOp, expr))
+    }
+
+    override fun acceptDistributeRight(newOp: Op, expr: ASTNode): ASTNode {
+        return UnaryCall(op, arg.acceptDistributeRight(newOp, expr))
+    }
+
+    override fun toString(): String {
+        return ("($op$arg)")
     }
 }
 
@@ -53,6 +70,8 @@ class Call(val op: Op, val left: ASTNode, val right: ASTNode): ASTNode() {
             return left.acceptDistributeRight(newOp, newExpr)
         }
     }
+
+
     override fun toString(): String {
         return "($left $op $right)"
     }
@@ -60,7 +79,6 @@ class Call(val op: Op, val left: ASTNode, val right: ASTNode): ASTNode() {
     override fun hashCode(): Int {
         return arrayOf(op, left, right).contentDeepHashCode()
     }
-
 }
 
 class FlatCall(val op: Op, val args: List<ASTNode>): ASTNode() {
@@ -86,7 +104,7 @@ class Var(val name: String): ASTNode() {
     }
 
     override fun acceptDistributeRight(newOp: Op, expr: ASTNode): ASTNode {
-        return Call(newOp, expr, this)
+        return Call(newOp, this, expr)
     }
 
     override fun toString(): String {
@@ -103,7 +121,7 @@ class Const(val value: Int): ASTNode() {
         return Call(newOp, expr, this)
     }
     override fun acceptDistributeRight(newOp: Op, expr: ASTNode): ASTNode {
-        return Call(newOp, expr, this)
+        return Call(newOp, this, expr)
     }
     override fun toString(): String {
         return value.toString()
@@ -132,12 +150,21 @@ class Parser(val tokens: Tokens) {
         return ASTNode.constOrVarFromToken(tokens.advance())
     }
 
-    fun parseMultiplicative(): ASTNode {
-        var left: ASTNode = parsePrimary()
-
-        while(at(TokenType.MULTIPLICATIVE)) {
+    fun parseUnary(): ASTNode {
+        if (at(TokenType.MINUS)) {
             val op = Op.fromToken(advance())
-            val right = parsePrimary()
+            val arg = parsePrimary()
+            return UnaryCall(op, arg)
+        }
+        return parsePrimary()
+    }
+
+    fun parseMultiplicative(): ASTNode {
+        var left: ASTNode = parseUnary()
+
+        while(at(TokenType.TIMES) || at(TokenType.DIV)) {
+            val op = Op.fromToken(advance())
+            val right = parseUnary()
             left = Call(op, left, right)
         }
         return left
@@ -146,7 +173,7 @@ class Parser(val tokens: Tokens) {
     fun parseAdditive() : ASTNode {
         var left: ASTNode = parseMultiplicative()
 
-        while(at(TokenType.ADDITIVE)) {
+        while(at(TokenType.PLUS) || at(TokenType.MINUS)) {
             val op = Op.fromToken(advance())
             val right = parseMultiplicative()
             left = Call(op, left, right)

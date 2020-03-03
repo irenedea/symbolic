@@ -5,8 +5,10 @@ import java.lang.IllegalStateException
 enum class TokenType {
     CONST,
     VAR,
-    MULTIPLICATIVE,
-    ADDITIVE,
+    MINUS,
+    PLUS,
+    TIMES,
+    DIV,
     RPAR,
     LPAR,
     EOF
@@ -23,10 +25,10 @@ sealed class Token(val name: String, val type: TokenType) {
     object EOF: Token("EOF", TokenType.EOF)
 
     sealed class OP(name: String, type: TokenType): Token(name, type) {
-        object ADD: OP("+", TokenType.ADDITIVE)
-        object SUB: OP("-", TokenType.ADDITIVE)
-        object MUL: OP("*", TokenType.MULTIPLICATIVE)
-        object DIV: OP("/", TokenType.MULTIPLICATIVE)
+        object ADD: OP("+", TokenType.PLUS)
+        object SUB: OP("-", TokenType.MINUS)
+        object MUL: OP("*", TokenType.TIMES)
+        object DIV: OP("/", TokenType.DIV)
     }
 
     override fun toString(): String {

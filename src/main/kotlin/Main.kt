@@ -1,12 +1,11 @@
 package symbolic
 
-fun runPasses(ast: ASTNode, vararg passes: Pass): ASTNode {
-    var curr = ast
-    passes.forEach{
-        curr = it.run(curr)
-        println("${it.name} =>\t$curr")
+fun runPasses(ast: ASTNode, vararg passes: Pass, debug: Boolean = false): ASTNode {
+    return passes.fold(ast) { currAST, pass ->
+        val newAST = pass.run(currAST)
+        if (debug) println("${pass.name} =>\t$newAST")
+        newAST
     }
-    return curr
 }
 
 fun main() {
@@ -19,16 +18,10 @@ fun main() {
             val output = runPasses(
                     ast,
                     ExpandConst,
-                    Flatten,
-                    CanonicalAdds,
-                    CanonicalMuls,
-                    Unflatten,
                     Distributive,
-                    Flatten,
-                    CanonicalAdds,
-                    CanonicalMuls,
-                    Unflatten,
-                    CleanZerosOnes
+                    CleanZerosOnes,
+                    Normalize,
+                    debug = true
             )
             println("Tree is $output")
         } catch (e: Exception) {

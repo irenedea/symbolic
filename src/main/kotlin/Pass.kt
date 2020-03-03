@@ -8,7 +8,9 @@ interface Pass {
 fun runUntilStable(ast: ASTNode, fn: (ASTNode) -> ASTNode): ASTNode {
     var prev = ast
     var curr = fn(ast)
+    var count = 0
     while (prev.hashCode() != curr.hashCode()) {
+        count += 1
         prev = curr
         curr = fn(prev)
     }
@@ -41,9 +43,11 @@ object Distributive: Pass {
     override fun run(ast: ASTNode): ASTNode =
         runUntilStable(ast) { input ->
             val distributed = distributeLeft(distributeRight(input))
-            runPasses(distributed, Flatten, CanonicalAdds, CanonicalMuls, Unflatten)
+            Normalize.run(distributed)
         }
 }
+
+
 
 object Flatten: Pass {
     override val name: String = "Flatten"
@@ -86,11 +90,18 @@ object ExpandConst: Pass {
     }
 }
 
-fun ASTNode.isConst(value: Int): Boolean {
-    return this is Const && this.value == value
+object Normalize: Pass {
+    override val name: String = "Normalize"
+    override fun run(ast: ASTNode): ASTNode {
+        return runPasses(ast, Flatten, CanonicalAdds, CanonicalMuls, Unflatten)
+    }
 }
 
 object CleanZerosOnes: Pass {
+    private fun ASTNode.isConst(value: Int): Boolean {
+        return this is Const && this.value == value
+    }
+
     override val name: String = "CleanZerosOnes"
     private fun clean(ast: ASTNode): ASTNode = when(ast) {
         is Call -> {
