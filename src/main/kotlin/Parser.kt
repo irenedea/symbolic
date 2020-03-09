@@ -48,6 +48,13 @@ class UnaryCall(val op: Op, val arg: ASTNode): ASTNode() {
         return UnaryCall(op, arg.acceptDistributeRight(newOp, expr))
     }
 
+    fun copy(op: Op = this.op, arg: ASTNode = this.arg): UnaryCall {
+        if (op == this.op && arg == this.arg) {
+            return this
+        }
+        return UnaryCall(op, arg)
+    }
+
     override fun toString(): String {
         return ("($op$arg)")
     }
@@ -71,6 +78,13 @@ class Call(val op: Op, val left: ASTNode, val right: ASTNode): ASTNode() {
         }
     }
 
+    fun copy(op: Op = this.op, left: ASTNode = this.left, right: ASTNode = this.right): Call {
+        if (op == this.op && left == this.left && right == this.right) {
+            return this
+        }
+        return Call(op, left, right)
+    }
+
 
     override fun toString(): String {
         return "($left $op $right)"
@@ -91,6 +105,13 @@ class FlatCall(val op: Op, val args: List<ASTNode>): ASTNode() {
     }
     override fun toString(): String {
         return args.joinToString(" $op ")
+    }
+
+    fun copy(op: Op = this.op, args: List<ASTNode> = this.args): FlatCall {
+        if (op == this.op && args == this.args) {
+            return this
+        }
+        return FlatCall(op, args)
     }
 
     override fun hashCode(): Int {
@@ -152,7 +173,8 @@ class Parser(val tokens: Tokens) {
 
     fun parseUnary(): ASTNode {
         if (at(TokenType.MINUS)) {
-            val op = Op.fromToken(advance())
+            advance()
+            val op = Negate
             val arg = parsePrimary()
             return UnaryCall(op, arg)
         }

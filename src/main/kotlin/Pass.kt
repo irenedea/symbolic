@@ -17,6 +17,13 @@ fun runUntilStable(ast: ASTNode, fn: (ASTNode) -> ASTNode): ASTNode {
     return curr
 }
 
+fun recurseHelper(ast: ASTNode, fn: (ASTNode) -> ASTNode): ASTNode = when(ast) {
+    is Call -> ast.copy(left = fn(ast.left), right = fn(ast.right))
+    is FlatCall -> ast.copy(args = ast.args.map { fn(it) })
+    is UnaryCall -> ast.copy(arg = fn(ast.arg))
+    is Var, is Const -> ast
+}
+
 object Distributive: Pass {
     override val name: String = "Distributive"
     private fun distributeRight(ast: ASTNode): ASTNode = when(ast) {
@@ -70,8 +77,22 @@ object Flatten: Pass {
     override fun run(ast: ASTNode): ASTNode = runUntilStable(ast) { flatten(it) }
 }
 
+object ExpandSub: Pass {
+    override val name: String = "ExpandSub"
+    private fun expandSub(ast: ASTNode): ASTNode = when(ast) {
+        is Call -> {
+            if (ast.op is Sub) {
+                Call(Add, ast.left, UnaryCall(Negate, ast.right))
+            } else Call(ast.op, expandSub(ast.left), expandSub(ast.right))
+        }
+        is UnaryCall -> UnaryCall(ast.op, expandSub(ast.arg))
+        else -> ast
+    }
+    override fun run(ast: ASTNode): ASTNode = expandSub(ast)
+}
+
 object ExpandConst: Pass {
-    override val name: String = "Expand"
+    override val name: String = "ExpandConst"
     private fun addFromZero(value: Int): ASTNode {
         if (value == 0) {
             return Const(0)
@@ -81,13 +102,31 @@ object ExpandConst: Pass {
 
     private fun expand(ast: ASTNode): ASTNode = when(ast) {
         is Const -> addFromZero(ast.value)
-        is Call -> Call(ast.op, expand(ast.left), expand(ast.right))
-        is FlatCall -> FlatCall(ast.op, ast.args.map { expand(it) })
-        else -> ast
+        else -> recurseHelper(ast, ::expand)
     }
     override fun run(ast: ASTNode): ASTNode {
         return expand(ast)
     }
+}
+
+object ExpandUnary: Pass {
+    override val name: String = "ExpandUnary"
+    private fun expandUnary(ast: ASTNode): ASTNode {
+        return when (ast) {
+            is UnaryCall -> {
+                if (ast.op is Negate) {
+                    Call(Mul, Const(-1), ast.arg)
+                } else {
+                    UnaryCall(ast.op, expandUnary(ast.arg))
+                }
+            }
+            is Call -> {
+                Call(ast.op, expandUnary(ast.left), expandUnary(ast.right))
+            }
+            else -> ast
+        }
+    }
+    override fun run(ast: ASTNode): ASTNode = expandUnary(ast)
 }
 
 object Normalize: Pass {
@@ -97,10 +136,11 @@ object Normalize: Pass {
     }
 }
 
+fun ASTNode.isConst(value: Int): Boolean {
+    return this is Const && this.value == value
+}
+
 object CleanZerosOnes: Pass {
-    private fun ASTNode.isConst(value: Int): Boolean {
-        return this is Const && this.value == value
-    }
 
     override val name: String = "CleanZerosOnes"
     private fun clean(ast: ASTNode): ASTNode = when(ast) {
@@ -134,6 +174,38 @@ object CleanZerosOnes: Pass {
     override fun run(ast: ASTNode): ASTNode = runUntilStable(ast) { clean(it) }
 }
 
+object CleanNegOnes: Pass {
+    override val name: String = "CleanNegOnes"
+    // Assume flattened, canonicalized muls.
+    private fun clean(ast: ASTNode): ASTNode =
+        if (ast is FlatCall && ast.op == Mul) {
+            val args = ast.args
+            val start = args.indexOfFirst { it.isConst(-1) }
+            val end = args.indexOfLast { it.isConst(-1) }
+            if (start != -1 && end != -1) {
+                val noNegOnes = args.subList(0, start) + args.subList(end + 1, args.size)
+                val numNegOnes = start - end + 1
+                val newArgs = if (numNegOnes % 2 != 0) {
+                    listOf(Const(-1), Const(1)) + noNegOnes
+                } else {
+                    listOf(Const(1), Const(1)) + noNegOnes // Add ones in case noNegOnes is completely empty.
+                }
+                ast.copy(args = newArgs.map { recurseHelper(it, ::clean) })
+            } else
+                recurseHelper(ast, ::clean)
+
+        } else {
+            recurseHelper(ast, ::clean)
+        }
+
+    override fun run(ast: ASTNode): ASTNode {
+        val preprocess = CanonicalMuls.run(Flatten.run(ast))
+        return Unflatten.run(clean(preprocess))
+    }
+}
+
+
+
 object Unflatten: Pass {
     override val name: String = "Unflatten"
     fun unflattenCallArgs(argList: List<ASTNode>, op: Op): ASTNode {
@@ -153,6 +225,7 @@ object Unflatten: Pass {
     }
     override fun run(ast: ASTNode): ASTNode = runUntilStable(ast) { unflatten(it) }
 }
+
 
 object CanonicalAdds: Pass {
     override val name: String = "CanonicalAdds"

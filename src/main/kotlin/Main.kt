@@ -17,8 +17,11 @@ fun main() {
             println("=> $ast")
             val output = runPasses(
                     ast,
+                    ExpandSub,
                     ExpandConst,
+                    ExpandUnary,
                     Distributive,
+                    CleanNegOnes,
                     CleanZerosOnes,
                     Normalize,
                     debug = true
