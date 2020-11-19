@@ -1,7 +1,5 @@
 package symbolic
 
-import java.lang.IllegalStateException
-
 enum class TokenType {
     CONST,
     VAR,
@@ -91,7 +89,7 @@ class Tokens {
     }
 
     fun advance(): Token {
-        if (!canAdvance()) throw IllegalStateException("Cannot advance to next token for $tokens.")
+        if (!canAdvance()) throw IllegalStateException("Cannot advance to next token.")
         return tokens[index].also { index++ }
     }
 
@@ -108,7 +106,6 @@ class Tokens {
     }
 
     fun advancePastParensExpression(): Tokens  {
-        assert(at(TokenType.LPAR))
         val startIndex = index
         var balance = -1
         advance() // LPAR
@@ -117,6 +114,7 @@ class Tokens {
             else if (at(TokenType.RPAR)) balance += 1
             advance()
         }
+        if (at(TokenType.LPAR)) throw IllegalStateException("Did you mean to use *?")
         return Tokens(tokens.subList(startIndex + 1, index - 1))
     }
 

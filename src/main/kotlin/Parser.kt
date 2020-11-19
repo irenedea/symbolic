@@ -30,6 +30,13 @@ sealed class ASTNode {
 
     abstract fun acceptDistributeRight(newOp: Op, expr: ASTNode): ASTNode
 
+    override fun equals(other: Any?): Boolean {
+        if (other == null) return false
+        if (other::class == this::class)
+            return this.hashCode() == other.hashCode()
+        return false
+    }
+
     companion object {
         fun constOrVarFromToken(token: Token): ASTNode = when (token.type) {
             TokenType.CONST -> Const(token.name.toInt())
@@ -56,7 +63,11 @@ class UnaryCall(val op: Op, val arg: ASTNode): ASTNode() {
     }
 
     override fun toString(): String {
-        return ("($op$arg)")
+        return ("$op($arg)")
+    }
+
+    override fun hashCode(): Int {
+        return arrayOf(this::class, op, arg).contentDeepHashCode()
     }
 }
 
@@ -91,11 +102,14 @@ class Call(val op: Op, val left: ASTNode, val right: ASTNode): ASTNode() {
     }
 
     override fun hashCode(): Int {
-        return arrayOf(op, left, right).contentDeepHashCode()
+        return arrayOf(this::class, op, left, right).contentDeepHashCode()
     }
 }
 
 class FlatCall(val op: Op, val args: List<ASTNode>): ASTNode() {
+    init {
+        if (args.size < 2) throw IllegalArgumentException()
+    }
     override fun acceptDistributeLeft(newOp: Op, expr: ASTNode): ASTNode {
         return FlatCall(op, args.map { it.acceptDistributeLeft(op, expr)})
     }
@@ -115,7 +129,7 @@ class FlatCall(val op: Op, val args: List<ASTNode>): ASTNode() {
     }
 
     override fun hashCode(): Int {
-        return arrayOf(op, args).contentDeepHashCode()
+        return arrayOf(this::class, op, args).contentDeepHashCode()
     }
 }
 

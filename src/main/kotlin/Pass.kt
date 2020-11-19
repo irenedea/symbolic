@@ -1,5 +1,7 @@
 package symbolic
 
+import kotlin.math.min
+
 interface Pass {
     val name: String
     fun run(ast: ASTNode): ASTNode
@@ -79,15 +81,11 @@ object Flatten: Pass {
 
 object ExpandSub: Pass {
     override val name: String = "ExpandSub"
-    private fun expandSub(ast: ASTNode): ASTNode = when(ast) {
-        is Call -> {
-            if (ast.op is Sub) {
-                Call(Add, ast.left, UnaryCall(Negate, ast.right))
-            } else Call(ast.op, expandSub(ast.left), expandSub(ast.right))
-        }
-        is UnaryCall -> UnaryCall(ast.op, expandSub(ast.arg))
-        else -> ast
-    }
+    private fun expandSub(ast: ASTNode): ASTNode =
+        if (ast is Call && ast.op is Sub)
+            Call(Add, expandSub(ast.left), UnaryCall(Negate, expandSub(ast.right)))
+         else recurseHelper(ast, ::expandSub)
+
     override fun run(ast: ASTNode): ASTNode = expandSub(ast)
 }
 
@@ -115,7 +113,7 @@ object ExpandUnary: Pass {
         return when (ast) {
             is UnaryCall -> {
                 if (ast.op is Negate) {
-                    Call(Mul, Const(-1), ast.arg)
+                    Call(Mul, Const(-1), expandUnary(ast.arg))
                 } else {
                     UnaryCall(ast.op, expandUnary(ast.arg))
                 }
@@ -123,7 +121,7 @@ object ExpandUnary: Pass {
             is Call -> {
                 Call(ast.op, expandUnary(ast.left), expandUnary(ast.right))
             }
-            else -> ast
+            else -> recurseHelper(ast, ::expandUnary)
         }
     }
     override fun run(ast: ASTNode): ASTNode = expandUnary(ast)
@@ -141,7 +139,6 @@ fun ASTNode.isConst(value: Int): Boolean {
 }
 
 object CleanZerosOnes: Pass {
-
     override val name: String = "CleanZerosOnes"
     private fun clean(ast: ASTNode): ASTNode = when(ast) {
         is Call -> {
@@ -169,7 +166,7 @@ object CleanZerosOnes: Pass {
             }
         }
         is FlatCall -> throw NotImplementedError()
-        else -> ast
+        else -> recurseHelper(ast, ::clean)
     }
     override fun run(ast: ASTNode): ASTNode = runUntilStable(ast) { clean(it) }
 }
@@ -226,6 +223,62 @@ object Unflatten: Pass {
     override fun run(ast: ASTNode): ASTNode = runUntilStable(ast) { unflatten(it) }
 }
 
+object NegOnesToUnary: Pass {
+    override val name: String = "NegOnesToUnary"
+
+    private fun clean(ast: ASTNode): ASTNode =
+        if (ast is FlatCall && ast.op is Mul && ast.args.first().isConst(-1)) {
+            if (ast.args.size == 2) {
+                UnaryCall(Negate, ast.args[1])
+            } else
+                UnaryCall(Negate, recurseHelper(FlatCall(ast.op, ast.args.subList(1, ast.args.size)), ::clean))
+        } else recurseHelper(ast, ::clean)
+
+    override fun run(ast: ASTNode): ASTNode {
+        return runUntilStable(Flatten.run(ast), ::clean)
+    }
+}
+
+object ReduceAddNegates: Pass {
+    override val name: String = "ReduceAddNegates"
+
+    private fun clean(ast: ASTNode): ASTNode {
+        if (ast is FlatCall) {
+            val newCall = ast.copy(args = ast.args.map { clean(it) })
+            if (ast.op !is Add) {
+                return newCall
+            }
+            val negatives = newCall.args.flatMap { if (it is UnaryCall && it.op is Negate) listOf(it.arg) else listOf() }
+            val positives = newCall.args.filter { !(it is UnaryCall && it.op is Negate) }
+            val groupNegatives = negatives.groupBy { it.hashCode() }.mapKeys { it.value.first() }.mapValues { it.value.size }
+            val groupPositives = positives.groupBy { it.hashCode() }.mapKeys { it.value.first() }.mapValues { it.value.size }
+            val newNegatives = groupNegatives.toMutableMap()
+            val newPositives = groupPositives.toMutableMap()
+
+            for (astKey in groupNegatives.keys intersect groupPositives.keys) {
+                val numNegs = groupNegatives.getOrElse(astKey) { 0 }
+                val numPos = groupPositives.getOrElse(astKey) { 0 }
+                val smaller = min(numNegs, numPos)
+                newNegatives[astKey] = numNegs - smaller
+                newPositives[astKey] = numPos - smaller
+            }
+            val newArgs = mutableListOf<ASTNode>()
+            newNegatives.forEach { for (i in 0 until it.value) newArgs.add(UnaryCall(Negate, it.key)) }
+            newPositives.forEach { for (i in 0 until it.value) newArgs.add(it.key) }
+            if (newArgs.size == 1) {
+                return newArgs.first()
+            } else if (newArgs.isEmpty()) {
+                return Const(0)
+            }
+            return newCall.copy(args = newArgs)
+        } else return recurseHelper(ast, ::clean)
+    }
+
+    override fun run(ast: ASTNode): ASTNode {
+        val preprocessed = Flatten.run(ast)
+        return clean(preprocessed)
+    }
+}
 
 object CanonicalAdds: Pass {
     override val name: String = "CanonicalAdds"
